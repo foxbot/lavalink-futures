@@ -1,4 +1,6 @@
 use futures::unsync::mpsc::Sender as UnsyncSender;
+use futures::{Future, Sink};
+use lavalink::model::{IntoWebSocketMessage, Pause, Play, Seek, Stop, Volume};
 use std::collections::HashMap;
 use websocket::OwnedMessage;
 use ::Error;
@@ -49,6 +51,13 @@ pub struct AudioPlayer {
 }
 
 impl AudioPlayer {
+    /// Creates a new audio player.
+    ///
+    /// Using [`AudioPlayerManager::create`] or [`NodeManager::create_player`]
+    /// is the preferred method of creating a new player.
+    ///
+    /// [`AudioPlayerManager::create`]: struct.AudioPlayerManager.html#method.create
+    /// [`NodeManager::create_player`]: ../nodes/struct.NodeManager.html#method.create_player
     pub fn new(guild_id: u64, sender: UnsyncSender<OwnedMessage>) -> Self {
         Self {
             paused: false,
@@ -61,28 +70,55 @@ impl AudioPlayer {
         }
     }
 
-    pub fn pause(&mut self, pause: bool) -> Result<(), ()> {
-        unimplemented!();
+    /// Sends a message to Lavalink telling it to either pause or unpause the
+    /// player.
+    pub fn pause(&mut self, pause: bool) -> Result<(), Error> {
+        let msg = Pause::new(&self.guild_id.to_string()[..], pause)
+            .into_ws_message()?;
+
+        self.send(msg)
     }
 
+    /// Sends a message to Lavalink telling it to play a track with optional
+    /// configuration settings.
     pub fn play(
         &mut self,
         track: &str,
         start_time: Option<u64>,
         end_time: Option<u64>,
-    ) -> Result<(), ()> {
-        unimplemented!();
+    ) -> Result<(), Error> {
+        let msg = Play::new(&self.guild_id.to_string()[..], track, start_time, end_time)
+            .into_ws_message()?;
+
+        self.send(msg)
     }
 
-    pub fn seek(&mut self) -> Result<(), ()> {
-        unimplemented!();
+    /// Sends a message to Lavalink telling it to seek the player to a certain
+    /// position.
+    pub fn seek(&mut self, position: i64) -> Result<(), Error> {
+        let msg = Seek::new(&self.guild_id.to_string()[..], position)
+            .into_ws_message()?;
+
+        self.send(msg)
     }
 
-    pub fn stop(&mut self) -> Result<(), ()> {
-        unimplemented!();
+    /// Sends a message to Lavalink telling it to stop the player.
+    pub fn stop(&mut self) -> Result<(), Error> {
+        let msg = Stop::new(&self.guild_id.to_string()[..]).into_ws_message()?;
+
+        self.send(msg)
     }
 
-    pub fn volume(&mut self, volume: i32) -> Result<(), ()> {
-        unimplemented!();
+    /// Sends a message to Lavalink telling it to mutate the volume setting.
+    pub fn volume(&mut self, volume: i32) -> Result<(), Error> {
+        let msg = Volume::new(&self.guild_id.to_string()[..], volume)
+            .into_ws_message()?;
+
+        self.send(msg)
+    }
+
+    #[inline]
+    fn send(&self, message: OwnedMessage) -> Result<(), Error> {
+        self.sender.start_send(message).map(|_| ()).map_err(From::from)
     }
 }
