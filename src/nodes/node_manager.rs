@@ -60,14 +60,14 @@ impl NodeManager {
 
         let nodes = (Rc::try_unwrap(self.nodes).ok()?).try_borrow().ok()?;
 
-        for (name, node) in nodes.iter() {
+        nodes.iter().for_each(|(name, node)| {
             let total = node.penalty().unwrap_or(0);
 
             if total < record {
                 best = Some(&name[..]);
                 record = total;
             }
-        }
+        });
 
         best
     }
