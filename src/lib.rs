@@ -10,6 +10,7 @@ extern crate serde;
 extern crate serde_json;
 
 pub mod nodes;
+pub mod player;
 
 mod error;
 mod event_handler;

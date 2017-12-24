@@ -3,6 +3,7 @@ use websocket::WebSocketError;
 
 #[derive(Debug)]
 pub enum Error {
+    PlayerAlreadyExists,
     WebSocket(WebSocketError),
     WebSocketClientParse(WebSocketClientParseError),
 }
