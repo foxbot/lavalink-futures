@@ -1,4 +1,4 @@
-#![feature(conservative_impl_trait)]
+#![feature(conservative_impl_trait, try_trait)]
 
 #[macro_use] extern crate log;
 
@@ -17,3 +17,4 @@ mod event_handler;
 
 pub use self::error::Error;
 pub use self::event_handler::EventHandler;
+pub use websocket::OwnedMessage;

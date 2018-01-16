@@ -1,47 +1,58 @@
 use futures::prelude::*;
-use futures::unsync::mpsc::{
+use futures::sync::mpsc::{
     self,
-    Receiver as UnsyncReceiver,
-    SendError as UnsyncSendError,
-    Sender as UnsyncSender,
+    Receiver as SyncReceiver,
+    SendError as SyncSendError,
+    Sender as SyncSender,
 };
 use futures::{Future, StartSend, future};
 use lavalink::model::{IntoWebSocketMessage, IsConnectedResponse, ValidationResponse};
 use lavalink::opcodes::Opcode;
 use serde::Deserialize;
 use serde_json::{self, Value};
+use std::cell::RefCell;
+use std::io::{Error as IoError, ErrorKind as IoErrorKind};
 use std::rc::Rc;
 use super::{NodeConfig, State};
 use websocket::async::Handle;
 use websocket::header::Headers;
-use websocket::{ClientBuilder, OwnedMessage};
+use websocket::{ClientBuilder, OwnedMessage, WebSocketError};
 use ::player::*;
 use ::{Error, EventHandler};
 
 pub struct Node {
-    pub state: Rc<State>,
-    pub user_to_node: UnsyncSender<OwnedMessage>,
-    pub user_from_node: UnsyncReceiver<OwnedMessage>,
+    pub state: Rc<RefCell<State>>,
+    pub user_to_node: SyncSender<OwnedMessage>,
+    pub user_from_node: SyncReceiver<OwnedMessage>,
 }
 
 impl Node {
-    pub fn connect<'a>(
-        handle: &'a Handle,
-        config: &'a NodeConfig,
-        player_manager: Rc<AudioPlayerManager>,
-        mut handler: Rc<Box<EventHandler>>,
-    ) -> impl Future<Item = Self, Error = Error> + 'a {
+    pub fn connect(
+        handle: Handle,
+        config: NodeConfig,
+        player_manager: Rc<RefCell<AudioPlayerManager>>,
+        handler: Rc<RefCell<Box<EventHandler>>>,
+    ) -> impl Future<Item = Self, Error = Error> {
         let mut headers = Headers::new();
         headers.set_raw("Authorization", vec![config.password.clone().into_bytes()]);
         headers.set_raw("Num-Shards", vec![config.num_shards.to_string().into_bytes()]);
         headers.set_raw("User-Id", vec![config.user_id.clone().into_bytes()]);
 
-        let done = future::result(ClientBuilder::new(&config.websocket_host).map_err(From::from))
+        let handle2 = handle.clone();
+        let handle3 = handle.clone();
+        future::result(ClientBuilder::new(&config.websocket_host).map_err(From::from))
             .and_then(move |builder| {
+                trace!(
+                    "Building node WS client & connecting: {}",
+                    config.websocket_host,
+                );
+
                 builder.custom_headers(&headers)
-                    .async_connect_insecure(handle)
+                    .async_connect_insecure(&handle2)
             })
-            .map(|(duplex, _)| {
+            .map(move |(duplex, _)| {
+                trace!("Node WS client connected");
+
                 // user_to_node: user send to node (node handles)
                 // node_from_user: node receive from user (user handles)
                 // node_to_user: node send to user (node handles)
@@ -50,42 +61,129 @@ impl Node {
                 let (node_to_user, user_from_node) = mpsc::channel(0);
 
                 let (sink, stream) = duplex.split();
-                let state = Rc::new(State::default());
+                let state = Rc::new(RefCell::new(State::default()));
                 let ws_state = Rc::clone(&state);
+                let (sink_tx, sink_rx) = mpsc::unbounded();
 
                 let future = stream
-                    .map(move |msg| {
+                    .map(move |msg| (msg, sink_tx.clone()))
+                    .filter_map(move |(msg, sink_tx)| {
+                        // todo: optimize
                         match msg {
                             OwnedMessage::Close(data) => {
                                 info!("Received a close: {:?}", data);
 
-                                Box::new(future::ok(Some(OwnedMessage::Close(None))))
+                                Some(OwnedMessage::Close(None))
                             },
                             OwnedMessage::Ping(data) => {
                                 debug!("Received a ping: {:?}", data);
 
-                                Box::new(future::ok(Some(OwnedMessage::Pong(data))))
+                                Some(OwnedMessage::Pong(data))
                             },
                             OwnedMessage::Text(data) => {
                                 trace!("Received text: {:?}", data);
 
-                                handle_message(&node_to_user, data.into_bytes(), &mut handler, &mut state)
+                                let done = handle_message(
+                                    &node_to_user,
+                                    data.as_bytes(),
+                                    Rc::clone(&handler),
+                                    &Rc::clone(&ws_state),
+                                    Rc::clone(&player_manager),
+                                ).map(move |msg_| {
+                                    if let Some(msg) = msg_ {
+                                        if let Err(why) = sink_tx.unbounded_send(msg) {
+                                            warn!(
+                                                "Err sending to sink: {:?}",
+                                                why,
+                                            );
+                                        }
+                                    }
+
+                                    ()
+                                }).map_err(|_| ());
+
+                                handle3.spawn(done);
+
+                                None
                             },
                             OwnedMessage::Binary(data) => {
                                 trace!("Received binary: {:?}", data);
 
-                                handle_message(&node_to_user, data, &mut handler, &mut state)
+                                let done = handle_message(
+                                    &node_to_user,
+                                    &data,
+                                    Rc::clone(&handler),
+                                    &Rc::clone(&ws_state),
+                                    Rc::clone(&player_manager),
+                                ).map(move |msg| {
+                                    if let Some(msg) = msg {
+                                        if let Err(why) = sink_tx.unbounded_send(msg) {
+                                            warn!(
+                                                "Err sending to sink: {:?}",
+                                                why,
+                                            );
+                                        }
+                                    }
+
+                                    ()
+                                }).map_err(|_| ());
+
+                                handle3.spawn(done);
+
+                                None
                             },
                             OwnedMessage::Pong(data) => {
                                 warn!("Received a pong somehow? {:?}", data);
 
-                                Box::new(future::ok(None))
+                                None
                             },
                         }
                     })
-                    .for_each(|future| future.then(|res| sink.send(res)));
+                    .select(node_from_user.map_err(|why| {
+                        warn!("Err selceting node_from_user: {:?}", why);
 
-                // handle.spawn(future);
+                        WebSocketError::IoError(IoError::new(
+                            IoErrorKind::Other,
+                            "This should be unreachable",
+                        ))
+                    }))
+                    .select(sink_rx.map_err(|why| {
+                        warn!("Err selecting sink_rx: {:?}", why);
+
+                        WebSocketError::IoError(IoError::new(
+                            IoErrorKind::Other,
+                            "This should be unreachable",
+                        ))
+                    }))
+                    .map(|msg| {
+                        debug!("msg: {:?}", msg);
+
+                        msg
+                    })
+                    // .map(move |future| {
+                    //     (future, handle3.clone(), sink_tx.clone())
+                    // })
+                    // .for_each(|(future, handle, sink_tx)| {
+                    //     future.and_then(move |res| {
+                    //         res.and_then(|msg| {
+                    //             handle.spawn(sink_tx.send(msg).map(|_| ()).map_err(|_| ()));
+                    //             Some(())
+                    //         });
+                    //         Box::new(future::done(Ok(())))
+                    //     })
+                    //     .map_err(|_| {
+                    //         IoError::new(
+                    //             IoErrorKind::Other,
+                    //             "This should be unreachable",
+                    //         )
+                    //     })
+                    //     .from_err()
+                    // })
+                    .forward(sink)
+                    .map(|_| ())
+                    .map_err(|_| ());
+
+                handle.spawn(future);
 
                 Self {
                     state,
@@ -93,9 +191,7 @@ impl Node {
                     user_from_node,
                 }
             })
-            .map_err(From::from);
-
-        done
+            .from_err()
     }
 
     /// Sends a close code over the WebSocket, terminating the connection.
@@ -103,7 +199,7 @@ impl Node {
     /// **Note**: This does _not_ remove it from the manager operating the node.
     /// Prefer to close nodes via the manager.
     pub fn close(&mut self)
-        -> StartSend<OwnedMessage, UnsyncSendError<OwnedMessage>> {
+        -> StartSend<OwnedMessage, SyncSendError<OwnedMessage>> {
         self.user_to_node.start_send(OwnedMessage::Close(None))
     }
 
@@ -114,11 +210,12 @@ impl Node {
     /// inaccessible by only the library's usage, so you should be cautious
     /// about accessing it.
     pub fn penalty(&self) -> Option<i32> {
-        let stats = Rc::try_unwrap(self.state).ok()?.stats?;
+        let state = self.state.borrow();
+        let stats = state.stats.as_ref()?;
 
         let cpu = 1.05f64.powf(100f64 * stats.cpu.system_load) * 10f64 - 10f64;
 
-        let (deficit_frame, null_frame) = match stats.frame_stats {
+        let (deficit_frame, null_frame) = match stats.frame_stats.as_ref() {
             Some(frame_stats) => {
                 (
                     1.03f64.powf(500f64 * (f64::from(frame_stats.deficit) / 3000f64)) * 300f64 - 300f64,
@@ -133,12 +230,14 @@ impl Node {
 }
 
 fn handle_message(
-    holder: &UnsyncSender<OwnedMessage>,
-    bytes: Vec<u8>,
-    handler: &mut Rc<Box<EventHandler>>,
-    state: &mut Rc<State>,
+    // todo: why is this not needed?
+    _: &SyncSender<OwnedMessage>,
+    bytes: &[u8],
+    handler: Rc<RefCell<Box<EventHandler>>>,
+    state: &Rc<RefCell<State>>,
+    mut player_manager: Rc<RefCell<AudioPlayerManager>>,
 ) -> Box<Future<Item = Option<OwnedMessage>, Error = ()>> {
-    let json = match serde_json::from_slice::<Value>(&bytes) {
+    let json = match serde_json::from_slice::<Value>(bytes) {
         Ok(json) => json,
         Err(why) => {
             warn!("Error parsing received JSON: {:?}", why);
@@ -167,32 +266,104 @@ fn handle_message(
         },
         Opcode::ValidationReq => Box::new(handle_validation_req(handler, &json)),
         Opcode::IsConnectedReq => Box::new(handle_is_connected_req(handler, &json)),
-    //     Opcode::PlayerUpdate => Self::handle_player_update,
+        Opcode::PlayerUpdate => Box::new(handle_player_update(&json, &mut player_manager)),
         Opcode::Stats => Box::new(handle_state(handler, json, state)),
-    //     Opcode::Event => Self::handle_event,
-        _ => return Box::new(future::ok(None)),
+        Opcode::Event => Box::new(handle_event(handler, &json, &mut player_manager)),
+        _ => Box::new(future::ok(None)),
     }
 }
 
-fn handle_is_connected_req(handler: &mut Rc<Box<EventHandler>>, json: &Value)
-    -> impl Future<Item = Option<OwnedMessage>, Error = ()> {
-    let shard_id = json["shardId"].as_u64().unwrap();
+fn handle_event(handler: Rc<RefCell<Box<EventHandler>>>, json: &Value, player_manager: &mut Rc<RefCell<AudioPlayerManager>>)
+    -> Box<Future<Item = Option<OwnedMessage>, Error = ()>> {
+    let guild_id_str = json["guildId"]
+        .as_str()
+        .expect("invalid json guildId - should be str");
+    let guild_id = guild_id_str
+        .parse::<u64>()
+        .expect("could not parse json guild_id into u64");
+    let track = json["track"]
+        .as_str()
+        .expect("invalid json track - should be str");
 
-    let future = match Rc::get_mut(handler) {
-        Some(handler) => handler.is_connected(shard_id),
+    let player_manager = match Rc::get_mut(player_manager) {
+        Some(player) => player,
         None => {
-            warn!("Failed to get mutable reference to EventHandler");
+            warn!("Failed to get mutable reference to player manager");
 
-            Box::new(future::ok(true))
+            return Box::new(future::ok(None));
         },
     };
 
-    future.map(|connected| {
-        IsConnectedResponse::new(shard_id, connected).into_ws_message().ok()
-    })
+    let mut player_manager = player_manager.borrow_mut();
+
+    let player = match player_manager.get_mut(&guild_id) {
+        Some(player) => player,
+        None => {
+            warn!(
+                "got invalid audio player update for guild {:?}",
+                guild_id,
+            );
+
+            return Box::new(future::ok(None));
+        }
+    };
+
+    match json["type"].as_str().expect("Err parsing type to str") {
+        "TrackEndEvent" => {
+            let reason = json["reason"]
+                .as_str()
+                .expect("invalid json reason - should be str");
+
+            // Set the player's track so nothing is playing, reset
+            // the time, and reset the position
+            player.track = None;
+            player.time = 0;
+            player.position = 0;
+
+            Box::new(handler.borrow_mut().track_end(
+                track.to_owned(),
+                reason.to_owned(),
+            ).map(|_| None))
+        },
+        "TrackExceptionEvent" => {
+            let error = json["error"]
+                .as_str()
+                .expect("invalid json error - should be str");
+
+            // TODO: determine if should keep playing
+
+            Box::new(handler.borrow_mut().track_exception(track.to_owned(), error.to_owned())
+                .map(|_| None))
+        },
+        "TrackStuckEvent" => {
+            let threshold_ms = json["thresholdMs"]
+                .as_i64()
+                .expect("invalid json thresholdMs - should be i64");
+
+            Box::new(handler.borrow_mut().track_stuck(
+                track.to_owned(),
+                threshold_ms,
+            ).map(|_| None))
+        },
+        other => {
+            warn!("Unexpected event type: {}", other);
+
+            Box::new(future::ok(None))
+        },
+    }
 }
 
-fn handle_player_update(json: &Value, player_manager: &mut Rc<AudioPlayerManager>)
+fn handle_is_connected_req(handler: Rc<RefCell<Box<EventHandler>>>, json: &Value)
+    -> impl Future<Item = Option<OwnedMessage>, Error = ()> {
+    let shard_id = json["shardId"].as_u64().unwrap();
+
+    Box::new(handler.borrow_mut().is_connected(shard_id)
+        .map(move |connected| {
+            IsConnectedResponse::new(shard_id, connected).into_ws_message().ok()
+        }))
+}
+
+fn handle_player_update(json: &Value, player_manager: &mut Rc<RefCell<AudioPlayerManager>>)
     -> impl Future<Item = Option<OwnedMessage>, Error = ()> {
     let guild_id_str = json["guildId"].as_str().unwrap();
     let guild_id = guild_id_str.parse::<u64>().unwrap();
@@ -209,8 +380,10 @@ fn handle_player_update(json: &Value, player_manager: &mut Rc<AudioPlayerManager
         },
     };
 
-    match player_manager.get(&guild_id) {
-        Some(mut player) => {
+    let mut player_manager = player_manager.borrow_mut();
+
+    match player_manager.get_mut(&guild_id) {
+        Some(player) => {
             player.time = time;
             player.position = position;
         },
@@ -222,33 +395,21 @@ fn handle_player_update(json: &Value, player_manager: &mut Rc<AudioPlayerManager
     future::ok(None)
 }
 
-fn handle_send_ws(handler: &mut Rc<Box<EventHandler>>, json: &Value)
+fn handle_send_ws(handler: Rc<RefCell<Box<EventHandler>>>, json: &Value)
     -> impl Future<Item = Option<OwnedMessage>, Error = ()> {
     let shard_id = json["shardId"].as_u64().unwrap();
     let msg = json["message"].as_str().unwrap();
 
-    match Rc::get_mut(handler) {
-        Some(handler) => handler.forward(shard_id, msg),
-        None => {
-            warn!("Failed to get mutable reference to EventHandler");
-
-            Box::new(future::ok(None))
-        },
-    }
+    handler.borrow_mut().forward(shard_id, msg)
 }
 
-fn handle_state(handler: &mut Rc<Box<EventHandler>>, json: Value, state: &mut Rc<State>)
+// todo: should this be needed?
+fn handle_state(_: Rc<RefCell<Box<EventHandler>>>, json: Value, state: &Rc<RefCell<State>>)
     -> impl Future<Item = Option<OwnedMessage>, Error = ()> {
+
     match serde_json::from_value(json) {
         Ok(parsed) => {
-            match Rc::get_mut(state) {
-                Some(state) => {
-                    state.stats = Some(parsed);
-                },
-                None => {
-                    warn!("Failed to open state");
-                },
-            }
+            state.borrow_mut().stats = Some(parsed);
         },
         Err(why) => {
             warn!("Failed to deserialize state payload: {:?}", why);
@@ -258,7 +419,7 @@ fn handle_state(handler: &mut Rc<Box<EventHandler>>, json: Value, state: &mut Rc
     future::ok(None)
 }
 
-fn handle_validation_req(handler: &mut Rc<Box<EventHandler>>, json: &Value)
+fn handle_validation_req(handler: Rc<RefCell<Box<EventHandler>>>, json: &Value)
     -> impl Future<Item = Option<OwnedMessage>, Error = ()> {
     let guild_id_str = json["guildId"]
         .as_str()
@@ -266,20 +427,12 @@ fn handle_validation_req(handler: &mut Rc<Box<EventHandler>>, json: &Value)
         .to_owned();
     let channel_id_str = json["channelId"].as_str().map(|x| x.to_owned());
 
-    let future = match Rc::get_mut(handler) {
-        Some(handler) => {
-            handler.is_valid(&guild_id_str, channel_id_str)
-        },
-        None => {
-            warn!("Failed to get mutable reference to EventHandler");
-
-            Box::new(future::ok(true))
-        },
-    };
-
-    future.map(|valid| {
+    Box::new(handler.borrow_mut().is_valid(
+        &guild_id_str,
+        channel_id_str.clone(),
+    ).map(|valid| {
         ValidationResponse::new(guild_id_str, channel_id_str, valid)
             .into_ws_message()
             .ok()
-    })
+    }))
 }

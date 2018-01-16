@@ -1,13 +1,16 @@
-use futures::unsync::mpsc::SendError as UnsyncSendError;
+use futures::sync::mpsc::SendError as SyncSendError;
 use lavalink::Error as LavalinkError;
+use std::option::NoneError;
 use websocket::client::ParseError as WebSocketClientParseError;
 use websocket::{OwnedMessage, WebSocketError};
 
 #[derive(Debug)]
 pub enum Error {
     Lavalink(LavalinkError),
+    None,
     PlayerAlreadyExists,
-    UnsyncSend(UnsyncSendError<OwnedMessage>),
+    RcUnwrapping,
+    SyncSend(SyncSendError<OwnedMessage>),
     WebSocket(WebSocketError),
     WebSocketClientParse(WebSocketClientParseError),
 }
@@ -18,9 +21,15 @@ impl From<LavalinkError> for Error {
     }
 }
 
-impl From<UnsyncSendError<OwnedMessage>> for Error {
-    fn from(err: UnsyncSendError<OwnedMessage>) -> Self {
-        Error::UnsyncSend(err)
+impl From<NoneError> for Error {
+    fn from(_: NoneError) -> Self {
+        Error::None
+    }
+}
+
+impl From<SyncSendError<OwnedMessage>> for Error {
+    fn from(err: SyncSendError<OwnedMessage>) -> Self {
+        Error::SyncSend(err)
     }
 }
 
