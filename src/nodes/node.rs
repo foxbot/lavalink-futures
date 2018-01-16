@@ -76,7 +76,7 @@ impl Node {
                                 Some(OwnedMessage::Close(None))
                             },
                             OwnedMessage::Ping(data) => {
-                                debug!("Received a ping: {:?}", data);
+                                trace!("Received a ping: {:?}", data);
 
                                 Some(OwnedMessage::Pong(data))
                             },
