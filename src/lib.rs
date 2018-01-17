@@ -1,5 +1,3 @@
-#![feature(conservative_impl_trait, try_trait)]
-
 #[macro_use] extern crate log;
 
 extern crate evzht9h3nznqzwl as websocket;

@@ -1,6 +1,5 @@
 use futures::sync::mpsc::SendError as SyncSendError;
 use lavalink::Error as LavalinkError;
-use std::option::NoneError;
 use websocket::client::ParseError as WebSocketClientParseError;
 use websocket::{OwnedMessage, WebSocketError};
 
@@ -18,12 +17,6 @@ pub enum Error {
 impl From<LavalinkError> for Error {
     fn from(err: LavalinkError) -> Self {
         Error::Lavalink(err)
-    }
-}
-
-impl From<NoneError> for Error {
-    fn from(_: NoneError) -> Self {
-        Error::None
     }
 }
 

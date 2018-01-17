@@ -34,10 +34,10 @@ impl NodeManager {
     ///
     /// [`nodes`]: #structfield.nodes
     pub fn add_node(mut self, config: NodeConfig)
-        -> impl Future<Item = Self, Error = Error> {
+        -> Box<Future<Item = Self, Error = Error>> {
         let ws_host = config.websocket_host.clone();
 
-        Node::connect(
+        let done = Node::connect(
             self.handle.clone(),
             config,
             Rc::clone(&self.player_manager),
@@ -50,7 +50,9 @@ impl NodeManager {
             trace!("Err adding node: {:?}", why);
 
             why
-        })
+        });
+
+        Box::new(done)
     }
 
     /// Determines the best node, if any.
@@ -112,8 +114,12 @@ impl NodeManager {
         node_websocket_host: Option<&str>,
     ) -> Result<(), Error> {
         let node = match node_websocket_host {
-            Some(host) => self.nodes.get(host)?,
-            None => self.nodes.get(self.best_node()?)?,
+            Some(host) => self.nodes.get(host).ok_or(Error::None)?,
+            None => {
+                self.best_node()
+                    .and_then(|name| self.nodes.get(name))
+                    .ok_or(Error::None)?
+            },
         };
 
         let mut manager = self.player_manager.borrow_mut();

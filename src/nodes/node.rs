@@ -32,7 +32,7 @@ impl Node {
         config: NodeConfig,
         player_manager: Rc<RefCell<AudioPlayerManager>>,
         handler: Rc<RefCell<Box<EventHandler>>>,
-    ) -> impl Future<Item = Self, Error = Error> {
+    ) -> Box<Future<Item = Self, Error = Error>> {
         let mut headers = Headers::new();
         headers.set_raw("Authorization", vec![config.password.clone().into_bytes()]);
         headers.set_raw("Num-Shards", vec![config.num_shards.to_string().into_bytes()]);
@@ -40,7 +40,8 @@ impl Node {
 
         let handle2 = handle.clone();
         let handle3 = handle.clone();
-        future::result(ClientBuilder::new(&config.websocket_host).map_err(From::from))
+
+        let done = future::result(ClientBuilder::new(&config.websocket_host).map_err(From::from))
             .and_then(move |builder| {
                 trace!(
                     "Building node WS client & connecting: {}",
@@ -191,7 +192,9 @@ impl Node {
                     user_from_node,
                 }
             })
-            .from_err()
+            .from_err();
+
+        Box::new(done)
     }
 
     /// Sends a close code over the WebSocket, terminating the connection.
@@ -354,7 +357,7 @@ fn handle_event(handler: Rc<RefCell<Box<EventHandler>>>, json: &Value, player_ma
 }
 
 fn handle_is_connected_req(handler: Rc<RefCell<Box<EventHandler>>>, json: &Value)
-    -> impl Future<Item = Option<OwnedMessage>, Error = ()> {
+    -> Box<Future<Item = Option<OwnedMessage>, Error = ()>> {
     let shard_id = json["shardId"].as_u64().unwrap();
 
     Box::new(handler.borrow_mut().is_connected(shard_id)
@@ -364,7 +367,7 @@ fn handle_is_connected_req(handler: Rc<RefCell<Box<EventHandler>>>, json: &Value
 }
 
 fn handle_player_update(json: &Value, player_manager: &mut Rc<RefCell<AudioPlayerManager>>)
-    -> impl Future<Item = Option<OwnedMessage>, Error = ()> {
+    -> Box<Future<Item = Option<OwnedMessage>, Error = ()>> {
     let guild_id_str = json["guildId"].as_str().unwrap();
     let guild_id = guild_id_str.parse::<u64>().unwrap();
     let state = json["state"].as_object().unwrap();
@@ -376,7 +379,7 @@ fn handle_player_update(json: &Value, player_manager: &mut Rc<RefCell<AudioPlaye
         None => {
             warn!("Failed to get mutable reference to player manager");
 
-            return future::ok(None);
+            return Box::new(future::ok(None));
         },
     };
 
@@ -392,11 +395,11 @@ fn handle_player_update(json: &Value, player_manager: &mut Rc<RefCell<AudioPlaye
         },
     }
 
-    future::ok(None)
+    Box::new(future::ok(None))
 }
 
 fn handle_send_ws(handler: Rc<RefCell<Box<EventHandler>>>, json: &Value)
-    -> impl Future<Item = Option<OwnedMessage>, Error = ()> {
+    -> Box<Future<Item = Option<OwnedMessage>, Error = ()>> {
     let shard_id = json["shardId"].as_u64().unwrap();
     let msg = json["message"].as_str().unwrap();
 
@@ -405,7 +408,7 @@ fn handle_send_ws(handler: Rc<RefCell<Box<EventHandler>>>, json: &Value)
 
 // todo: should this be needed?
 fn handle_state(_: Rc<RefCell<Box<EventHandler>>>, json: Value, state: &Rc<RefCell<State>>)
-    -> impl Future<Item = Option<OwnedMessage>, Error = ()> {
+    -> Box<Future<Item = Option<OwnedMessage>, Error = ()>> {
 
     match serde_json::from_value(json) {
         Ok(parsed) => {
@@ -416,11 +419,11 @@ fn handle_state(_: Rc<RefCell<Box<EventHandler>>>, json: Value, state: &Rc<RefCe
         },
     }
 
-    future::ok(None)
+    Box::new(future::ok(None))
 }
 
 fn handle_validation_req(handler: Rc<RefCell<Box<EventHandler>>>, json: &Value)
-    -> impl Future<Item = Option<OwnedMessage>, Error = ()> {
+    -> Box<Future<Item = Option<OwnedMessage>, Error = ()>> {
     let guild_id_str = json["guildId"]
         .as_str()
         .unwrap()
