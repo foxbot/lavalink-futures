@@ -8,7 +8,6 @@ pub enum Error {
     Lavalink(LavalinkError),
     None,
     PlayerAlreadyExists,
-    RcUnwrapping,
     SyncSend(SyncSendError<OwnedMessage>),
     WebSocket(WebSocketError),
     WebSocketClientParse(WebSocketClientParseError),
