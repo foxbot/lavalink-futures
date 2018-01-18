@@ -128,10 +128,10 @@ extern crate serde_json;
 
 pub mod nodes;
 pub mod player;
+pub mod reexports;
 
 mod error;
 mod event_handler;
 
 pub use self::error::Error;
 pub use self::event_handler::EventHandler;
-pub use websocket::OwnedMessage;
