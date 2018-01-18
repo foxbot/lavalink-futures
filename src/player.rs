@@ -1,3 +1,6 @@
+//! Module containing structs for interacting with Lavalink nodes and playing
+//! audio for guilds.
+
 use futures::sync::mpsc::Sender as MpscSender;
 use futures::Sink;
 use lavalink::model::{
@@ -14,16 +17,27 @@ use std::collections::HashMap;
 use websocket::OwnedMessage;
 use ::Error;
 
+/// A light wrapper around a hashmap keyed by guild IDs with audio players.
 #[derive(Clone, Debug, Default)]
 pub struct AudioPlayerManager {
     players: HashMap<u64, AudioPlayer>,
 }
 
 impl AudioPlayerManager {
+    /// Creates a new default `AudioPlayerManager`.
+    #[inline]
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Creates an audio player for the guild of the given ID.
+    ///
+    /// The `sender` must be a clone of [`Node::user_to_node`].
+    ///
+    /// It may be preferable to use [`NodeManager::create_player`].
+    ///
+    /// [`Node::user_to_node`]: ../nodes/struct.Node.html#structfield.user_to_node
+    /// [`NodeManager::create_player`]: ../nodes/struct.NodeManager.html#method.create_player
     pub fn create(&mut self, guild_id: u64, sender: MpscSender<OwnedMessage>)
         -> Result<&mut AudioPlayer, Error> {
         if self.players.contains_key(&guild_id) {
@@ -35,27 +49,39 @@ impl AudioPlayerManager {
         Ok(self.players.get_mut(&guild_id).unwrap())
     }
 
+    /// Retrieves an immutable reference to the audio player for the guild, if
+    /// it exists.
     pub fn get(&self, guild_id: &u64) -> Option<&AudioPlayer> {
         self.players.get(guild_id)
     }
 
+    /// Retrieves a mutable reference to the audio player for the guild, if it
+    /// exists.
     pub fn get_mut(&mut self, guild_id: &u64) -> Option<&mut AudioPlayer> {
         self.players.get_mut(guild_id)
     }
 
+    /// Whether the manager contains a player for the given guild.
     pub fn has(&self, guild_id: &u64) -> bool {
         self.players.contains_key(guild_id)
     }
 }
 
+/// A struct containing the state of a guild's audio player.
 #[derive(Clone, Debug)]
 pub struct AudioPlayer {
+    /// The ID of the guild that the player represents.
     pub guild_id: u64,
+    /// Whether the player is paused.
     pub paused: bool,
+    /// The estimated position of the player.
     pub position: i64,
     sender: MpscSender<OwnedMessage>,
+    /// The current time of the player.
     pub time: i64,
+    /// The track that the player is playing.
     pub track: Option<String>,
+    /// The volume setting, on a scale of 0 to 150.
     pub volume: i32,
 }
 

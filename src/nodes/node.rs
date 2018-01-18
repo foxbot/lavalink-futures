@@ -20,13 +20,34 @@ use websocket::{ClientBuilder, OwnedMessage, WebSocketError};
 use ::player::*;
 use ::{Error, EventHandler};
 
+/// The state of a connection to a Lavalink Node.
 pub struct Node {
+    /// The state of the node, containing statistics like load averages.
     pub state: Rc<RefCell<State>>,
+    /// A sender for sending messages over the WebSocket.
+    ///
+    /// It may be preferable to do this via an [`AudioPlayer`].
+    ///
+    /// [`AudioPlayer`]: ../player/struct.AudioPlayer.html
     pub user_to_node: SyncSender<OwnedMessage>,
+    /// Receiver from the node to the user. This will very rarely need to be
+    /// used, as the [`EventHandler`] contains all methods that need to be
+    /// implemented.
+    ///
+    /// [`EventHandler`]: ../trait.EventHandler.html
     pub user_from_node: SyncReceiver<OwnedMessage>,
 }
 
 impl Node {
+    /// Connects to a Lavalink node.
+    ///
+    /// Requires a Handle to the tokio Core in use, configuration identifying
+    /// the node, and an Rc to the audio player manager and handler
+    /// implementation.
+    ///
+    /// It may be preferable to connect to a Node via [`NodeManager::add_node`].
+    ///
+    /// [`NodeManager::add_node`]: struct.NodeManager.html#method.add_node
     pub fn connect(
         handle: Handle,
         config: NodeConfig,

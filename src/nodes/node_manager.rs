@@ -8,14 +8,25 @@ use websocket::async::Handle;
 use ::player::AudioPlayerManager;
 use ::{Error, EventHandler};
 
+/// A struct responsible for connecting to Lavalink nodes and providing
+/// shortcuts for audio player usage.
 pub struct NodeManager {
     handle: Handle,
     handler: Rc<RefCell<Box<EventHandler>>>,
+    /// HashMap of nodes, keyed by the websocket host.
     pub nodes: HashMap<String, Node>,
+    /// The player manager holding all of the audio players for nodes managed
+    /// under the instance of a `NodeManager`.
     pub player_manager: Rc<RefCell<AudioPlayerManager>>,
 }
 
 impl NodeManager {
+    /// Creates a new NodeManager.
+    ///
+    /// Requires a handle to the tokio Core in use and an instance of a type
+    /// implementing the [`EventHandler`] trait.
+    ///
+    /// [`EventHandler`]: ../trait.EventHandler.html
     pub fn new(handle: Handle, handler: RefCell<Box<EventHandler>>) -> Self {
         Self {
             nodes: HashMap::new(),
@@ -108,6 +119,9 @@ impl NodeManager {
         });
     }
 
+    /// Creates a new player using a [`Node`].
+    ///
+    /// [`Node`]: struct.Node.html
     pub fn create_player<'a>(
         &'a mut self,
         guild_id: u64,
@@ -127,6 +141,7 @@ impl NodeManager {
         manager.create(guild_id, node.user_to_node.clone()).map(|_| ())
     }
 
+    /// Retrieves a node by websocket host.
     pub fn get_node(&self, node_websocket_host: &str) -> Option<&Node> {
         self.nodes.get(node_websocket_host)
     }
