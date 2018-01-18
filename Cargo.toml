@@ -3,6 +3,13 @@ authors = ["Zeyla Hellyer <zey@zey.moe>"]
 name = "lavalink-futures"
 version = "0.1.0"
 
+[badges.maintenance]
+status = "actively-developed"
+
+[badges.travis-ci]
+branch = "master"
+repository = "zeyla/lavalink-futures"
+
 [dependencies]
 evzht9h3nznqzwl = "~0.0.3"
 futures = "~0.1"
