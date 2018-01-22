@@ -337,7 +337,7 @@ fn handle_event(handler: Rc<RefCell<Box<EventHandler>>>, json: &Value, player_ma
             );
 
             return Box::new(future::ok(None));
-        }
+        },
     };
 
     match json["type"].as_str().expect("Err parsing type to str") {
