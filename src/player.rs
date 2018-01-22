@@ -109,8 +109,8 @@ impl AudioPlayer {
     /// channel.
     pub fn join(&mut self, channel_id: u64) -> Result<(), Error> {
         let msg = Connect::new(
-            channel_id.to_string(),
             self.guild_id.to_string(),
+            channel_id.to_string(),
         ).into_ws_message()?;
 
         debug!("{:?}", msg);
