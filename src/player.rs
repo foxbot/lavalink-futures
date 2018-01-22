@@ -65,6 +65,19 @@ impl AudioPlayerManager {
     pub fn has(&self, guild_id: &u64) -> bool {
         self.players.contains_key(guild_id)
     }
+
+    /// Removes an audio player by guild ID.
+    ///
+    /// Calls [`AudioPlayer::leave`] if it is connected.
+    ///
+    /// [`AudioPlayer::leave`]: struct.AudioPlayer.html#method.leave
+    pub fn remove(&mut self, guild_id: &u64) -> Result<bool, Error> {
+        if let Some(mut player) = self.players.remove(guild_id) {
+            player.leave().map(|_| true)
+        } else {
+            Ok(false)
+        }
+    }
 }
 
 /// A struct containing the state of a guild's audio player.
