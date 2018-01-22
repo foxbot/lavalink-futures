@@ -190,8 +190,11 @@ impl AudioPlayer {
         self.send(msg)
     }
 
+    /// Sends a WebSocket message over the node.
+    ///
+    /// You should prefer using one of the other methods where it makes sense.
     #[inline]
-    fn send(&mut self, message: OwnedMessage) -> Result<(), Error> {
+    pub fn send(&mut self, message: OwnedMessage) -> Result<(), Error> {
         self.sender.start_send(message).map(|_| ()).map_err(From::from)
     }
 }
