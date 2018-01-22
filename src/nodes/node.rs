@@ -405,16 +405,14 @@ fn handle_player_update(json: &Value, player_manager: &mut Rc<RefCell<AudioPlaye
     let time = state["time"].as_i64().unwrap();
     let position = state["position"].as_i64().unwrap();
 
-    let player_manager = match Rc::get_mut(player_manager) {
-        Some(player) => player,
-        None => {
+    let mut player_manager = match RefCell::try_borrow_mut(&player_manager) {
+        Ok(player) => player,
+        Err(_) => {
             warn!("Failed to get mutable reference to player manager");
 
             return Box::new(future::ok(None));
         },
     };
-
-    let mut player_manager = player_manager.borrow_mut();
 
     match player_manager.get_mut(&guild_id) {
         Some(player) => {
