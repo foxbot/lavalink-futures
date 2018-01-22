@@ -145,6 +145,14 @@ impl NodeManager {
     pub fn get_node(&self, node_websocket_host: &str) -> Option<&Node> {
         self.nodes.get(node_websocket_host)
     }
+
+    /// Removes a player by guild ID.
+    ///
+    /// Returns `Ok(true)` if the player existed and was removed. Returns
+    /// `Ok(false)` if the player did not exist.
+    pub fn remove_player(&mut self, guild_id: &u64) -> Result<bool, Error> {
+        self.player_manager.borrow_mut().remove(guild_id)
+    }
 }
 
 impl Drop for NodeManager {
