@@ -1,5 +1,7 @@
 use futures::sync::mpsc::SendError as SyncSendError;
 use lavalink::Error as LavalinkError;
+use std::error::Error as StdError;
+use std::fmt::{Display, Formatter, Result as FmtResult};
 use websocket::client::ParseError as WebSocketClientParseError;
 use websocket::{OwnedMessage, WebSocketError};
 
@@ -21,6 +23,27 @@ pub enum Error {
     WebSocket(WebSocketError),
     /// There was an error while the `websocket` crate was parsing a URI.
     WebSocketClientParse(WebSocketClientParseError),
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        f.write_str(self.description())
+    }
+}
+
+impl StdError for Error {
+    fn description(&self) -> &str {
+        use self::Error::*;
+
+        match *self {
+            Lavalink(ref inner) => inner.description(),
+            None => "No value found",
+            PlayerAlreadyExists => "A player for that guild already exists",
+            SyncSend(ref inner) => inner.description(),
+            WebSocket(ref inner) => inner.description(),
+            WebSocketClientParse(ref inner) => inner.description(),
+        }
+    }
 }
 
 impl From<LavalinkError> for Error {
