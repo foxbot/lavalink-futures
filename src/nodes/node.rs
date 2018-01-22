@@ -22,6 +22,10 @@ use ::{Error, EventHandler};
 
 /// The state of a connection to a Lavalink Node.
 pub struct Node {
+    /// The HTTP server URI of the connected node.
+    pub http_host: String,
+    /// The password of the node.
+    pub password: String,
     /// The state of the node, containing statistics like load averages.
     pub state: Rc<RefCell<State>>,
     /// A sender for sending messages over the WebSocket.
@@ -36,6 +40,8 @@ pub struct Node {
     ///
     /// [`EventHandler`]: ../trait.EventHandler.html
     pub user_from_node: SyncReceiver<OwnedMessage>,
+    /// The WS server URI of the connected node.
+    pub websocket_host: String,
 }
 
 impl Node {
@@ -61,12 +67,13 @@ impl Node {
 
         let handle2 = handle.clone();
         let handle3 = handle.clone();
+        let websocket_host = config.websocket_host.clone();
 
-        let done = future::result(ClientBuilder::new(&config.websocket_host).map_err(From::from))
+        let done = future::result(ClientBuilder::new(&websocket_host).map_err(From::from))
             .and_then(move |builder| {
                 trace!(
                     "Building node WS client & connecting: {}",
-                    config.websocket_host,
+                    websocket_host,
                 );
 
                 builder.custom_headers(&headers)
@@ -208,6 +215,9 @@ impl Node {
                 handle.spawn(future);
 
                 Self {
+                    http_host: config.http_host,
+                    password: config.password,
+                    websocket_host: config.websocket_host,
                     state,
                     user_to_node,
                     user_from_node,
