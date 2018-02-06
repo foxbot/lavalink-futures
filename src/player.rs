@@ -6,13 +6,13 @@ use futures::Sink;
 use lavalink::model::{
     Connect,
     Disconnect,
-    IntoWebSocketMessage,
     Pause,
     Play,
     Seek,
     Stop,
     Volume,
 };
+use serde_json;
 use std::collections::HashMap;
 use websocket::OwnedMessage;
 use ::Error;
@@ -121,31 +121,33 @@ impl AudioPlayer {
     /// Sends a message to Lavalink telling it to join a given guild's voice
     /// channel.
     pub fn join(&mut self, channel_id: u64) -> Result<(), Error> {
-        let msg = Connect::new(
+        let msg = serde_json::to_vec(&Connect::new(
             self.guild_id.to_string(),
             channel_id.to_string(),
-        ).into_ws_message()?;
+        ))?;
 
-        debug!("{:?}", msg);
-
-        self.send(msg)
+        self.send(OwnedMessage::Binary(msg))
     }
 
     /// Sends a message to Lavalink telling it to leave the guild's voice
     /// channel.
     pub fn leave(&mut self) -> Result<(), Error> {
-        let msg = Disconnect::new(self.guild_id.to_string()).into_ws_message()?;
+        let msg = serde_json::to_vec(&Disconnect::new(
+            self.guild_id.to_string(),
+        ))?;
 
-        self.send(msg)
+        self.send(OwnedMessage::Binary(msg))
     }
 
     /// Sends a message to Lavalink telling it to either pause or unpause the
     /// player.
     pub fn pause(&mut self, pause: bool) -> Result<(), Error> {
-        let msg = Pause::new(&self.guild_id.to_string()[..], pause)
-            .into_ws_message()?;
+        let msg = serde_json::to_vec(&Pause::new(
+            &self.guild_id.to_string()[..],
+            pause,
+        ))?;
 
-        self.send(msg)
+        self.send(OwnedMessage::Binary(msg))
     }
 
     /// Sends a message to Lavalink telling it to play a track with optional
@@ -156,38 +158,44 @@ impl AudioPlayer {
         start_time: Option<u64>,
         end_time: Option<u64>,
     ) -> Result<(), Error> {
-        let msg = Play::new(
+        let msg = serde_json::to_vec(&Play::new(
             &self.guild_id.to_string()[..],
             track,
             start_time,
             end_time,
-        ).into_ws_message()?;
+        ))?;
 
-        self.send(msg)
+        self.send(OwnedMessage::Binary(msg))
     }
 
     /// Sends a message to Lavalink telling it to seek the player to a certain
     /// position.
     pub fn seek(&mut self, position: i64) -> Result<(), Error> {
-        let msg = Seek::new(&self.guild_id.to_string()[..], position)
-            .into_ws_message()?;
+        let msg = serde_json::to_vec(&Seek::new(
+            &self.guild_id.to_string()[..],
+            position,
+        ))?;
 
-        self.send(msg)
+        self.send(OwnedMessage::Binary(msg))
     }
 
     /// Sends a message to Lavalink telling it to stop the player.
     pub fn stop(&mut self) -> Result<(), Error> {
-        let msg = Stop::new(&self.guild_id.to_string()[..]).into_ws_message()?;
+        let msg = serde_json::to_vec(&Stop::new(
+            &self.guild_id.to_string()[..],
+        ))?;
 
-        self.send(msg)
+        self.send(OwnedMessage::Binary(msg))
     }
 
     /// Sends a message to Lavalink telling it to mutate the volume setting.
     pub fn volume(&mut self, volume: i32) -> Result<(), Error> {
-        let msg = Volume::new(&self.guild_id.to_string()[..], volume)
-            .into_ws_message()?;
+        let msg = serde_json::to_vec(&Volume::new(
+            &self.guild_id.to_string()[..],
+            volume,
+        ))?;
 
-        self.send(msg)
+        self.send(OwnedMessage::Binary(msg))
     }
 
     /// Sends a WebSocket message over the node.

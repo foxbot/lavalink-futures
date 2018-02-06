@@ -1,5 +1,6 @@
 use futures::sync::mpsc::SendError as SyncSendError;
 use lavalink::Error as LavalinkError;
+use serde_json::Error as JsonError;
 use std::error::Error as StdError;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 use websocket::client::ParseError as WebSocketClientParseError;
@@ -9,6 +10,8 @@ use websocket::{OwnedMessage, WebSocketError};
 /// library's functions.
 #[derive(Debug)]
 pub enum Error {
+    /// An error from the `serde_json` crate.
+    Json(JsonError),
     /// An error from the `lavalink` crate.
     Lavalink(LavalinkError),
     /// An indicator that something that should have been present wasn't.
@@ -36,6 +39,7 @@ impl StdError for Error {
         use self::Error::*;
 
         match *self {
+            Json(ref inner) => inner.description(),
             Lavalink(ref inner) => inner.description(),
             None => "No value found",
             PlayerAlreadyExists => "A player for that guild already exists",
@@ -43,6 +47,12 @@ impl StdError for Error {
             WebSocket(ref inner) => inner.description(),
             WebSocketClientParse(ref inner) => inner.description(),
         }
+    }
+}
+
+impl From<JsonError> for Error {
+    fn from(err: JsonError) -> Self {
+        Error::Json(err)
     }
 }
 

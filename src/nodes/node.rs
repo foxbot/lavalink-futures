@@ -6,7 +6,7 @@ use futures::sync::mpsc::{
     Sender as SyncSender,
 };
 use futures::{Future, StartSend, future};
-use lavalink::model::{IntoWebSocketMessage, IsConnectedResponse, ValidationResponse};
+use lavalink::model::{IsConnectedResponse, ValidationResponse};
 use lavalink::opcodes::Opcode;
 use serde::Deserialize;
 use serde_json::{self, Value};
@@ -391,7 +391,12 @@ fn handle_is_connected_req(handler: Rc<RefCell<Box<EventHandler>>>, json: &Value
 
     Box::new(handler.borrow_mut().is_connected(shard_id)
         .map(move |connected| {
-            IsConnectedResponse::new(shard_id, connected).into_ws_message().ok()
+            let bytes = serde_json::to_vec(&IsConnectedResponse::new(
+                shard_id,
+                connected,
+            )).ok()?;
+
+            Some(OwnedMessage::Binary(bytes))
         }))
 }
 
@@ -461,8 +466,12 @@ fn handle_validation_req(handler: Rc<RefCell<Box<EventHandler>>>, json: &Value)
         &guild_id_str,
         channel_id_str.clone(),
     ).map(|valid| {
-        ValidationResponse::new(guild_id_str, channel_id_str, valid)
-            .into_ws_message()
-            .ok()
+        let bytes = serde_json::to_vec(&ValidationResponse::new(
+            guild_id_str,
+            channel_id_str,
+            valid,
+        )).ok()?;
+
+        Some(OwnedMessage::Binary(bytes))
     }))
 }
