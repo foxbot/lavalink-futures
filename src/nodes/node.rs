@@ -243,7 +243,7 @@ impl Node {
     /// inaccessible by only the library's usage, so you should be cautious
     /// about accessing it.
     pub fn penalty(&self) -> Option<i32> {
-        let state = self.state.borrow();
+        let state = self.state.try_borrow().ok()?;
         let stats = state.stats.as_ref()?;
 
         let cpu = 1.05f64.powf(100f64 * stats.cpu.system_load) * 10f64 - 10f64;
@@ -346,10 +346,19 @@ fn handle_event(handler: Rc<RefCell<Box<EventHandler>>>, json: &Value, player_ma
             player.time = 0;
             player.position = 0;
 
-            Box::new(handler.borrow_mut().track_end(
-                track.to_owned(),
-                reason.to_owned(),
-            ).map(|_| None))
+            match handler.try_borrow_mut() {
+                Ok(mut handler) => {
+                    Box::new(handler.track_end(
+                        track.to_owned(),
+                        reason.to_owned(),
+                    ).map(|_| None))
+                },
+                Err(why) => {
+                    warn!("Err mutably borrowing handler: {:?}", why);
+
+                    Box::new(future::err(()))
+                },
+            }
         },
         "TrackExceptionEvent" => {
             let error = json["error"]
@@ -358,18 +367,38 @@ fn handle_event(handler: Rc<RefCell<Box<EventHandler>>>, json: &Value, player_ma
 
             // TODO: determine if should keep playing
 
-            Box::new(handler.borrow_mut().track_exception(track.to_owned(), error.to_owned())
-                .map(|_| None))
+            match handler.try_borrow_mut() {
+                Ok(mut handler) => {
+                    Box::new(handler.track_exception(
+                        track.to_owned(),
+                        error.to_owned(),
+                    ).map(|_| None))
+                },
+                Err(why) => {
+                    warn!("Err mutably borrowing handler: {:?}", why);
+
+                    Box::new(future::err(()))
+                },
+            }
         },
         "TrackStuckEvent" => {
             let threshold_ms = json["thresholdMs"]
                 .as_i64()
                 .expect("invalid json thresholdMs - should be i64");
 
-            Box::new(handler.borrow_mut().track_stuck(
-                track.to_owned(),
-                threshold_ms,
-            ).map(|_| None))
+            match handler.try_borrow_mut() {
+               Ok(mut handler) => {
+                    Box::new(handler.track_stuck(
+                        track.to_owned(),
+                        threshold_ms,
+                    ).map(|_| None))
+               },
+               Err(why) => {
+                   warn!("Err mutably borrowing handler: {:?}", why);
+
+                   Box::new(future::err(()))
+               },
+            }
         },
         other => {
             warn!("Unexpected event type: {}", other);
@@ -415,7 +444,14 @@ fn handle_state(_: Rc<RefCell<Box<EventHandler>>>, json: Value, state: &Rc<RefCe
 
     match serde_json::from_value(json) {
         Ok(parsed) => {
-            state.borrow_mut().stats = Some(parsed);
+            match state.try_borrow_mut() {
+                Ok(mut state) => {
+                    state.stats = Some(parsed);
+                },
+                Err(why) => {
+                    warn!("Err mutably borrowing state: {:?}", why);
+                },
+            }
         },
         Err(why) => {
             warn!("Failed to deserialize state payload: {:?}", why);

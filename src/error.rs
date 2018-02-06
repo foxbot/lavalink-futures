@@ -1,6 +1,7 @@
 use futures::sync::mpsc::SendError as SyncSendError;
 use lavalink::Error as LavalinkError;
 use serde_json::Error as JsonError;
+use std::cell::BorrowMutError;
 use std::error::Error as StdError;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 use websocket::client::ParseError as WebSocketClientParseError;
@@ -10,6 +11,8 @@ use websocket::{OwnedMessage, WebSocketError};
 /// library's functions.
 #[derive(Debug)]
 pub enum Error {
+    /// A RefCell's data couldn't be mutably borrowed.
+    BorrowMut(BorrowMutError),
     /// An error from the `serde_json` crate.
     Json(JsonError),
     /// An error from the `lavalink` crate.
@@ -39,6 +42,7 @@ impl StdError for Error {
         use self::Error::*;
 
         match *self {
+            BorrowMut(ref inner) => inner.description(),
             Json(ref inner) => inner.description(),
             Lavalink(ref inner) => inner.description(),
             None => "No value found",
@@ -47,6 +51,12 @@ impl StdError for Error {
             WebSocket(ref inner) => inner.description(),
             WebSocketClientParse(ref inner) => inner.description(),
         }
+    }
+}
+
+impl From<BorrowMutError> for Error {
+    fn from(err: BorrowMutError) -> Self {
+        Error::BorrowMut(err)
     }
 }
 

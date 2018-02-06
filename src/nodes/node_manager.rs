@@ -136,7 +136,7 @@ impl NodeManager {
             },
         };
 
-        let mut manager = self.player_manager.borrow_mut();
+        let mut manager = self.player_manager.try_borrow_mut()?;
 
         manager.create(guild_id, node.user_to_node.clone()).map(|_| ())
     }
@@ -150,8 +150,8 @@ impl NodeManager {
     ///
     /// Returns `Ok(true)` if the player existed and was removed. Returns
     /// `Ok(false)` if the player did not exist.
-    pub fn remove_player(&mut self, guild_id: &u64) -> bool {
-        self.player_manager.borrow_mut().remove(guild_id)
+    pub fn remove_player(&mut self, guild_id: &u64) -> Result<bool, Error> {
+        Ok(self.player_manager.try_borrow_mut()?.remove(guild_id))
     }
 }
 
