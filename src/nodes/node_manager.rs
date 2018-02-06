@@ -150,7 +150,7 @@ impl NodeManager {
     ///
     /// Returns `Ok(true)` if the player existed and was removed. Returns
     /// `Ok(false)` if the player did not exist.
-    pub fn remove_player(&mut self, guild_id: &u64) -> Result<bool, Error> {
+    pub fn remove_player(&mut self, guild_id: &u64) -> bool {
         self.player_manager.borrow_mut().remove(guild_id)
     }
 }

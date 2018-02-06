@@ -6,7 +6,6 @@ use futures::sync::mpsc::{
     Sender as SyncSender,
 };
 use futures::{Future, StartSend, future};
-use lavalink::model::{IsConnectedResponse, ValidationResponse};
 use lavalink::opcodes::Opcode;
 use serde::Deserialize;
 use serde_json::{self, Value};
@@ -295,11 +294,6 @@ fn handle_message(
     };
 
     match op {
-        Opcode::SendWS => {
-            Box::new(handle_send_ws(handler, &json))
-        },
-        Opcode::ValidationReq => Box::new(handle_validation_req(handler, &json)),
-        Opcode::IsConnectedReq => Box::new(handle_is_connected_req(handler, &json)),
         Opcode::PlayerUpdate => Box::new(handle_player_update(&json, &mut player_manager)),
         Opcode::Stats => Box::new(handle_state(handler, json, state)),
         Opcode::Event => Box::new(handle_event(handler, &json, &mut player_manager)),
@@ -385,21 +379,6 @@ fn handle_event(handler: Rc<RefCell<Box<EventHandler>>>, json: &Value, player_ma
     }
 }
 
-fn handle_is_connected_req(handler: Rc<RefCell<Box<EventHandler>>>, json: &Value)
-    -> Box<Future<Item = Option<OwnedMessage>, Error = ()>> {
-    let shard_id = json["shardId"].as_u64().unwrap();
-
-    Box::new(handler.borrow_mut().is_connected(shard_id)
-        .map(move |connected| {
-            let bytes = serde_json::to_vec(&IsConnectedResponse::new(
-                shard_id,
-                connected,
-            )).ok()?;
-
-            Some(OwnedMessage::Binary(bytes))
-        }))
-}
-
 fn handle_player_update(json: &Value, player_manager: &mut Rc<RefCell<AudioPlayerManager>>)
     -> Box<Future<Item = Option<OwnedMessage>, Error = ()>> {
     let guild_id_str = json["guildId"].as_str().unwrap();
@@ -430,14 +409,6 @@ fn handle_player_update(json: &Value, player_manager: &mut Rc<RefCell<AudioPlaye
     Box::new(future::ok(None))
 }
 
-fn handle_send_ws(handler: Rc<RefCell<Box<EventHandler>>>, json: &Value)
-    -> Box<Future<Item = Option<OwnedMessage>, Error = ()>> {
-    let shard_id = json["shardId"].as_u64().unwrap();
-    let msg = json["message"].as_str().unwrap();
-
-    handler.borrow_mut().forward(shard_id, msg)
-}
-
 // todo: should this be needed?
 fn handle_state(_: Rc<RefCell<Box<EventHandler>>>, json: Value, state: &Rc<RefCell<State>>)
     -> Box<Future<Item = Option<OwnedMessage>, Error = ()>> {
@@ -452,26 +423,4 @@ fn handle_state(_: Rc<RefCell<Box<EventHandler>>>, json: Value, state: &Rc<RefCe
     }
 
     Box::new(future::ok(None))
-}
-
-fn handle_validation_req(handler: Rc<RefCell<Box<EventHandler>>>, json: &Value)
-    -> Box<Future<Item = Option<OwnedMessage>, Error = ()>> {
-    let guild_id_str = json["guildId"]
-        .as_str()
-        .unwrap()
-        .to_owned();
-    let channel_id_str = json["channelId"].as_str().map(|x| x.to_owned());
-
-    Box::new(handler.borrow_mut().is_valid(
-        &guild_id_str,
-        channel_id_str.clone(),
-    ).map(|valid| {
-        let bytes = serde_json::to_vec(&ValidationResponse::new(
-            guild_id_str,
-            channel_id_str,
-            valid,
-        )).ok()?;
-
-        Some(OwnedMessage::Binary(bytes))
-    }))
 }

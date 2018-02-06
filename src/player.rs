@@ -4,8 +4,6 @@
 use futures::sync::mpsc::Sender as MpscSender;
 use futures::Sink;
 use lavalink::model::{
-    Connect,
-    Disconnect,
     Pause,
     Play,
     Seek,
@@ -71,12 +69,8 @@ impl AudioPlayerManager {
     /// Calls [`AudioPlayer::leave`] if it is connected.
     ///
     /// [`AudioPlayer::leave`]: struct.AudioPlayer.html#method.leave
-    pub fn remove(&mut self, guild_id: &u64) -> Result<bool, Error> {
-        if let Some(mut player) = self.players.remove(guild_id) {
-            player.leave().map(|_| true)
-        } else {
-            Ok(false)
-        }
+    pub fn remove(&mut self, guild_id: &u64) -> bool {
+        self.players.remove(guild_id).is_some()
     }
 }
 
@@ -116,27 +110,6 @@ impl AudioPlayer {
             guild_id,
             sender,
         }
-    }
-
-    /// Sends a message to Lavalink telling it to join a given guild's voice
-    /// channel.
-    pub fn join(&mut self, channel_id: u64) -> Result<(), Error> {
-        let msg = serde_json::to_vec(&Connect::new(
-            self.guild_id.to_string(),
-            channel_id.to_string(),
-        ))?;
-
-        self.send(OwnedMessage::Binary(msg))
-    }
-
-    /// Sends a message to Lavalink telling it to leave the guild's voice
-    /// channel.
-    pub fn leave(&mut self) -> Result<(), Error> {
-        let msg = serde_json::to_vec(&Disconnect::new(
-            self.guild_id.to_string(),
-        ))?;
-
-        self.send(OwnedMessage::Binary(msg))
     }
 
     /// Sends a message to Lavalink telling it to either pause or unpause the
