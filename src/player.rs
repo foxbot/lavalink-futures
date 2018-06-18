@@ -115,12 +115,12 @@ impl AudioPlayer {
     /// Sends a message to Lavalink telling it to either pause or unpause the
     /// player.
     pub fn pause(&mut self, pause: bool) -> Result<(), Error> {
-        let msg = serde_json::to_vec(&Pause::new(
+        let msg = serde_json::to_string(&Pause::new(
             &self.guild_id.to_string()[..],
             pause,
         ))?;
 
-        self.send(OwnedMessage::Binary(msg))
+        self.send(OwnedMessage::Text(msg))
     }
 
     /// Sends a message to Lavalink telling it to play a track with optional
@@ -131,44 +131,44 @@ impl AudioPlayer {
         start_time: Option<u64>,
         end_time: Option<u64>,
     ) -> Result<(), Error> {
-        let msg = serde_json::to_vec(&Play::new(
+        let msg = serde_json::to_string(&Play::new(
             &self.guild_id.to_string()[..],
             track,
             start_time,
             end_time,
         ))?;
 
-        self.send(OwnedMessage::Binary(msg))
+        self.send(OwnedMessage::Text(msg))
     }
 
     /// Sends a message to Lavalink telling it to seek the player to a certain
     /// position.
     pub fn seek(&mut self, position: i64) -> Result<(), Error> {
-        let msg = serde_json::to_vec(&Seek::new(
+        let msg = serde_json::to_string(&Seek::new(
             &self.guild_id.to_string()[..],
             position,
         ))?;
 
-        self.send(OwnedMessage::Binary(msg))
+        self.send(OwnedMessage::Text(msg))
     }
 
     /// Sends a message to Lavalink telling it to stop the player.
     pub fn stop(&mut self) -> Result<(), Error> {
-        let msg = serde_json::to_vec(&Stop::new(
+        let msg = serde_json::to_string(&Stop::new(
             &self.guild_id.to_string()[..],
         ))?;
 
-        self.send(OwnedMessage::Binary(msg))
+        self.send(OwnedMessage::Text(msg))
     }
 
     /// Sends a message to Lavalink telling it to mutate the volume setting.
     pub fn volume(&mut self, volume: i32) -> Result<(), Error> {
-        let msg = serde_json::to_vec(&Volume::new(
+        let msg = serde_json::to_string(&Volume::new(
             &self.guild_id.to_string()[..],
             volume,
         ))?;
 
-        self.send(OwnedMessage::Binary(msg))
+        self.send(OwnedMessage::Text(msg))
     }
 
     /// Sends a WebSocket message over the node.
