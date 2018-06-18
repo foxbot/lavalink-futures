@@ -349,6 +349,7 @@ fn handle_event(handler: Rc<RefCell<Box<EventHandler>>>, json: &Value, player_ma
             match handler.try_borrow_mut() {
                 Ok(mut handler) => {
                     Box::new(handler.track_end(
+                        guild_id,
                         track.to_owned(),
                         reason.to_owned(),
                     ).map(|_| None))
@@ -370,6 +371,7 @@ fn handle_event(handler: Rc<RefCell<Box<EventHandler>>>, json: &Value, player_ma
             match handler.try_borrow_mut() {
                 Ok(mut handler) => {
                     Box::new(handler.track_exception(
+                        guild_id,
                         track.to_owned(),
                         error.to_owned(),
                     ).map(|_| None))
@@ -389,6 +391,7 @@ fn handle_event(handler: Rc<RefCell<Box<EventHandler>>>, json: &Value, player_ma
             match handler.try_borrow_mut() {
                Ok(mut handler) => {
                     Box::new(handler.track_stuck(
+                        guild_id,
                         track.to_owned(),
                         threshold_ms,
                     ).map(|_| None))
