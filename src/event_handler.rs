@@ -1,3 +1,5 @@
+use player::AudioPlayer;
+
 use futures::Future;
 use websocket::OwnedMessage;
 
@@ -19,17 +21,17 @@ pub trait EventHandler {
 
     /// Tymethod called when a track ends. This is useful for then subsequently
     /// playing a new track.
-    fn track_end(&mut self, guild_id: u64, track: String, reason: String)
+    fn track_end(&mut self, player: &mut AudioPlayer, track: String, reason: String)
         -> Box<Future<Item = (), Error = ()>>;
 
     /// Tymethod called when an exception occurs during a track playing.
-    fn track_exception(&mut self, guild_id: u64, track: String, error: String)
+    fn track_exception(&mut self, player: &mut AudioPlayer, track: String, error: String)
         -> Box<Future<Item = (), Error = ()>>;
 
     /// Tymethod called when a track is determined as being "stuck" in playing.
     ///
     /// Includes the threshold in milliseconds before a track is detected as
     /// being stuck.
-    fn track_stuck(&mut self, guild_id: u64, track: String, threshold_ms: i64)
+    fn track_stuck(&mut self, player: &mut AudioPlayer, track: String, threshold_ms: i64)
         -> Box<Future<Item = (), Error = ()>>;
 }
